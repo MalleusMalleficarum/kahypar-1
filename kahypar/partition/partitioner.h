@@ -67,12 +67,14 @@ static inline void partition(Hypergraph& hypergraph, const Context& context) {
       } ());
   switch (context.partition.mode) {
     case Mode::recursive_bisection:
-
+      DBG<<"STARTING RB...";
       recursive_bisection::partition(hypergraph, context);
-
+      DBG<<"FINISHED RB";
       break;
     case Mode::direct_kway:
+      DBG << "STARTING kway...";
       direct_kway::partition(hypergraph, context);
+      DBG << "FINISHED kway";
       break;
     case Mode::UNDEFINED:
       LOG << "Partitioning Mode undefined!";
@@ -207,13 +209,18 @@ inline void Partitioner::preprocess(Hypergraph& hypergraph, const Context& conte
   if (context.partition.mode != Mode::recursive_bisection &&
       context.preprocessing.enable_community_detection) {
     // Repeated executions of non-evolutionary KaHyPar also re-use the community structure.
+    DBG << "ARE THE COMMUNITIES EMPTY" << context.evolutionary.communities.empty();
+    DBG << "IS THE SPARSIFIER ACTIVE" << context.preprocessing.min_hash_sparsifier.is_active;
     if (context.evolutionary.communities.empty() ||
         context.preprocessing.min_hash_sparsifier.is_active) {
       // If sparsification is enabled, we can't reuse the community structure
       // since each sparsification call might return a different hypergraph.
+      DBG << "STARTING COMMUNITY DETECTION...";
       detectCommunities(hypergraph, context);
       context.evolutionary.communities = hypergraph.communities();
+      DBG << "FINISHED COMMUNITY DETECTION";
     } else {
+      DBG << "REUSING COMMUNITY DETECION";
       ASSERT(hypergraph.currentNumNodes() == context.getCommunities().size());
       hypergraph.setCommunities(context.getCommunities());
     }
@@ -265,8 +272,9 @@ inline void Partitioner::partition(Hypergraph& hypergraph, Context& context) {
   io::printInputInformation(context, hypergraph);
 
   sanitize(hypergraph, context);
-
+  DBG << "TRYING TO GENERATE AN INDIVIDUAL";
   if (context.preprocessing.min_hash_sparsifier.is_active) {
+    DBG << "Sparsifier active";
     ALWAYS_ASSERT(!context.partition_evolutionary ||
                   context.evolutionary.action.decision() == EvoDecision::normal,
                   "Sparsification is only allowed for non-evolutionary partitioning "
@@ -284,8 +292,11 @@ inline void Partitioner::partition(Hypergraph& hypergraph, Context& context) {
     // outside of the partitioner.
     context.evolutionary.communities.clear();
   } else {
+    DBG << "STARTING PREPROCESS";
     preprocess(hypergraph, context);
+    DBG << "TRYING TO GENERATE AN INDIVIDUAL...";
     partition::partition(hypergraph, context);
+    DBG << "GENERATED AN INDIVIDUAL";
     postprocess(hypergraph);
   }
 

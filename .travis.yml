@@ -54,7 +54,7 @@ before_script:
   - mkdir build; cp sonar-project.properties build; cd build
   - cmake
       -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
-      -DCMAKE_C_COMPILER="$CMAKE_CC" -DCMAKE_CXX_COMPILER="$CMAKE_CXX" -DKAHYPAR_USE_GCOV="$COV"
+      -DCMAKE_C_COMPILER="/usr/bin/mpicc" -DCMAKE_CXX_COMPILER="/usr/bin/mpicxx" -DKAHYPAR_USE_GCOV="$COV"
       -DCMAKE_C_FLAGS="$COMPILER_FLAGS" -DCMAKE_CXX_FLAGS="$COMPILER_FLAGS"
       $CMAKE_ARGS ..
 

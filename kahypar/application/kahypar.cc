@@ -23,6 +23,7 @@
 #include <memory>
 #include <string>
 #include <unordered_set>
+#include </software/openmpi-1.5.3-progthr/include/mpi.h>
 
 #include "kahypar/application/command_line_options.h"
 #include "kahypar/definitions.h"
@@ -32,22 +33,35 @@
 #include "kahypar/kahypar.h"
 #include "kahypar/macros.h"
 #include "kahypar/partition/evo_partitioner.h"
+#include "kahypar/partition/parallel_partitioner.h"
 #include "kahypar/partition/metrics.h"
 #include "kahypar/utils/math.h"
 #include "kahypar/utils/randomize.h"
 
+
 using kahypar::HighResClockTimepoint;
 using kahypar::Partitioner;
 using kahypar::partition::EvoPartitioner;
+using kahypar::partition::ParallelPartitioner;
 using kahypar::Context;
 using kahypar::PartitionID;
 using kahypar::HyperedgeWeight;
 using kahypar::HypernodeWeight;
 
 int main(int argc, char* argv[]) {
+
+  MPI_Init(&argc, &argv);
+
+  int rank, size;
+  MPI_Comm communicator = MPI_COMM_WORLD; 
+  MPI_Comm_rank( communicator, &rank);
+  MPI_Comm_size( communicator, &size);
+
+
   Context context;
 
   kahypar::processCommandLineInput(context, argc, argv);
+
   kahypar::sanityCheck(context);
 
   if (!context.partition.quiet_mode) {
@@ -65,7 +79,6 @@ int main(int argc, char* argv[]) {
   kahypar::Hypergraph hypergraph(
     kahypar::io::createHypergraphFromFile(context.partition.graph_filename,
                                           context.partition.k));
-
   if (!context.partition.fixed_vertex_filename.empty()) {
     kahypar::io::readFixedVertexFile(hypergraph, context.partition.fixed_vertex_filename);
   }
@@ -93,7 +106,6 @@ int main(int argc, char* argv[]) {
       }
       return true;
     } (), "Partition file is corrupted.");
-
     for (kahypar::HypernodeID hn = 0; hn != hypergraph.initialNumNodes(); ++hn) {
       hypergraph.setNodePart(hn, input_partition[hn]);
     }
@@ -136,7 +148,6 @@ int main(int argc, char* argv[]) {
   std::chrono::duration<double> elapsed_time(0);
 
   const HighResClockTimepoint complete_start = std::chrono::high_resolution_clock::now();
-
   if (context.partition.time_limit != 0 && !context.partition_evolutionary) {
     // We are running in time limit mode. Therefore we have to remember the best solution
     std::vector<PartitionID> best_solution(hypergraph.initialNumNodes(), 0);
@@ -182,31 +193,37 @@ int main(int argc, char* argv[]) {
       hypergraph.setNodePart(hn, best_solution[hn]);
     }
   } else if (context.partition_evolutionary && context.partition.time_limit != 0) {
-    EvoPartitioner partitioner(context);
+  
+    ParallelPartitioner partitioner(context);
     partitioner.partition(hypergraph, context);
 
-    std::vector<PartitionID> best_partition = partitioner.bestPartition();
-    hypergraph.reset();
+    if(rank == 0) {
+      std::vector<PartitionID> best_partition = partitioner.bestPartition();
+      hypergraph.reset();
 
-    for (const auto& hn : hypergraph.nodes()) {
-      hypergraph.setNodePart(hn, best_partition[hn]);
+      for (const auto& hn : hypergraph.nodes()) {
+        hypergraph.setNodePart(hn, best_partition[hn]);
+      }
     }
   } else {
     Partitioner().partition(hypergraph, context);
   }
-
+  MPI_Finalize();
+  if(rank != 0) { 
+    return 0;
+  }
   const HighResClockTimepoint complete_end = std::chrono::high_resolution_clock::now();
 
   std::chrono::duration<double> elapsed_seconds = complete_end - complete_start;
-
+  
 #ifdef GATHER_STATS
   LOG << "*******************************";
   LOG << "***** GATHER_STATS ACTIVE *****";
   LOG << "*******************************";
   kahypar::io::printPartitioningStatistics();
 #endif
-
-  if (!context.partition.quiet_mode) {
+  //DANGER ORIGINAL WAS !context.quiet
+  if (context.partition.quiet_mode) {
     if (context.partition.time_limit != 0) {
       LOG << "********************************************************************************";
       LOG << "*                          FINAL Partitioning Result                           *";

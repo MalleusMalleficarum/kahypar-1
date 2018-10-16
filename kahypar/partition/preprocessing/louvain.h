@@ -133,7 +133,6 @@ class Louvain {
       mapping_stack.pop_back();
       cur_idx--;
     }
-
     ASSERT(_graph_hierarchy.size() == 1);
     return cur_quality;
   }
@@ -205,7 +204,9 @@ class Louvain {
 
         bool incident_cluster_changed = false;
         for (const Edge& e : graph.incidentEdges(node)) {
+          
           const NodeID v = e.target_node;
+          
           const ClusterID v_cid = graph.clusterID(v);
           if (v_cid == cur_cid && v != node) {
             cur_incident_cluster_weight += e.weight;
@@ -220,6 +221,7 @@ class Louvain {
           quality.remove(node, cur_incident_cluster_weight);
 
           for (const auto& cluster : graph.incidentClusterWeightOfNode(node)) {
+            
             const ClusterID cid = cluster.clusterID;
             const EdgeWeight weight = cluster.weight;
             const EdgeWeight gain = quality.gain(node, cid, weight);

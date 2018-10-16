@@ -42,8 +42,10 @@ static inline void partition(Hypergraph& hypergraph,
   io::printCoarseningBanner(context);
 
   HighResClockTimepoint start = std::chrono::high_resolution_clock::now();
+  DBG << "Start Coarsening";
   coarsener.coarsen(context.coarsening.contraction_limit);
   HighResClockTimepoint end = std::chrono::high_resolution_clock::now();
+  DBG << "End Coarsening" << std::chrono::duration<double>(end - start).count();
   Timer::instance().add(context, Timepoint::coarsening,
                         std::chrono::duration<double>(end - start).count());
 
@@ -58,8 +60,10 @@ static inline void partition(Hypergraph& hypergraph,
     io::printInitialPartitioningBanner(context);
 
     start = std::chrono::high_resolution_clock::now();
+    DBG << "Start IP";
     initial::partition(hypergraph, context);
     end = std::chrono::high_resolution_clock::now();
+    DBG << "End IP" << std::chrono::duration<double>(end - start).count();
     Timer::instance().add(context, Timepoint::initial_partitioning,
                           std::chrono::duration<double>(end - start).count());
 
