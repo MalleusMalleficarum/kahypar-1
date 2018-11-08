@@ -193,10 +193,8 @@ int main(int argc, char* argv[]) {
       hypergraph.setNodePart(hn, best_solution[hn]);
     }
   } else if (context.partition_evolutionary && context.partition.time_limit != 0) {
-  
     ParallelPartitioner partitioner(context);
     partitioner.partition(hypergraph, context);
-
     if(rank == 0) {
       std::vector<PartitionID> best_partition = partitioner.bestPartition();
       hypergraph.reset();
@@ -206,7 +204,9 @@ int main(int argc, char* argv[]) {
       }
     }
   } else {
+
     Partitioner().partition(hypergraph, context);
+    
   }
   MPI_Finalize();
   if(rank != 0) { 

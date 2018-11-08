@@ -41,6 +41,11 @@ class Population {
 
   inline size_t insert(Individual&& individual, const Context& context) {
     DBG << context.evolutionary.replace_strategy;
+    //New addition for quick initialization of population
+    if(_individuals.size() < context.evolutionary.population_size) {
+      _individuals.emplace_back(std::move(individual));
+      return _individuals.size();
+    }
     switch (context.evolutionary.replace_strategy) {
       case EvoReplaceStrategy::worst:
         return forceInsert(std::move(individual), worst());
@@ -109,7 +114,6 @@ class Population {
 
     return _individuals.back();
   }
-
   inline size_t size() const {
     return _individuals.size();
   }

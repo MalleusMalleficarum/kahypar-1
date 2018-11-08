@@ -37,17 +37,18 @@
 #include "kahypar/partition/parallel/exchanger.h"
 
 
+
 namespace kahypar {
 namespace partition {
 class ParallelPartitioner {
  private:
-  static constexpr bool debug = false;
+  static constexpr bool debug = true;
 
  public:
   explicit ParallelPartitioner(const Context& context) :
     _timelimit(),
-    _population() {
-    _mpi_communicator = MPI_COMM_WORLD;
+    _population(),
+    _mpi_communicator(MPI_COMM_WORLD) {
     MPI_Comm_rank(_mpi_communicator, &_mpi_rank);
     MPI_Comm_size(_mpi_communicator, &_mpi_size);
     _timelimit = context.partition.time_limit;
@@ -80,11 +81,11 @@ class ParallelPartitioner {
       switch (decision) {
         case EvoDecision::mutation:
           performMutation(hg, context);
-          DBG << _population;
+          DBG << _population << "Rank " << _mpi_rank;
           break;
         case EvoDecision::combine:
           performCombine(hg, context);
-          DBG << _population;
+          DBG << _population << "Rank " << _mpi_rank;
           break;
         default:
           LOG << "Error in evo_partitioner.h: Non-covered case in decision making";
@@ -95,19 +96,14 @@ class ParallelPartitioner {
      
       for(unsigned i = 0; i < messages; ++i) {
 
-        exchanger.broadcastBestIndividual(context,hg, _population);
-        
+        exchanger.sendBestIndividual(context,hg, _population);
         exchanger.receiveIndividual(context,hg, _population);
-        
       }
       
     }
     
-    exchanger.broadcastBestIndividual(context,hg, _population, true);
-        
-    exchanger.receiveIndividual(context,hg, _population);
+    exchanger.collectBestPartition(_population, context, hg);    
     hg.reset();
-    //exchanger.collectBestIndividual(_population);
     hg.setPartition(_population.individualAt(_population.best()).partition());
   }
 
@@ -138,13 +134,27 @@ class ParallelPartitioner {
       int minimal_size = std::max(dynamic_population_size, 3);
 
       context.evolutionary.population_size = std::min(minimal_size, 50);
-      DBG << context.evolutionary.population_size;
+      DBG << context.evolutionary.population_size << "Rank " << _mpi_rank << "before";
       DBG << _population;
+      MPI_Bcast(&context.evolutionary.population_size, 1, MPI_INT, 0, _mpi_communicator);
+      DBG << context.evolutionary.population_size << "Rank " << _mpi_rank << "after";
     }
     context.evolutionary.edge_frequency_amount = sqrt(context.evolutionary.population_size);
     DBG << "EDGE-FREQUENCY-AMOUNT";
     DBG << context.evolutionary.edge_frequency_amount;
-    while (_population.size() < context.evolutionary.population_size &&
+    
+    
+    int desired_repetitions_for_initial_partitioning;
+    if(context.evolutionary.parallel_partitioning_quick_start) {
+      desired_repetitions_for_initial_partitioning = ceil(context.evolutionary.population_size / _mpi_size);
+    }
+    else {
+      desired_repetitions_for_initial_partitioning = context.evolutionary.population_size;
+    }
+    DBG << "desired_repetitions "<<desired_repetitions_for_initial_partitioning  << "Rank " << _mpi_rank;
+    DBG << "context.evolutionary.population_size "<<context.evolutionary.population_size  << "Rank " << _mpi_rank;
+    
+    while (_population.size() < desired_repetitions_for_initial_partitioning &&
            Timer::instance().evolutionaryResult().total_evolutionary <= _timelimit) {
       ++context.evolutionary.iteration;
       HighResClockTimepoint start = std::chrono::high_resolution_clock::now();
@@ -156,6 +166,12 @@ class ParallelPartitioner {
       verbose(context, 0);
       DBG << _population;
     }
+    
+    if(context.evolutionary.parallel_partitioning_quick_start) {
+      Exchanger exchanger(_mpi_communicator);
+      exchanger.exchangeInitialPopulations(_population, context, hg, desired_repetitions_for_initial_partitioning);
+    }
+    
   }
 
 
@@ -235,11 +251,11 @@ class ParallelPartitioner {
 
     for (size_t i = 0; i < _population.size(); ++i) {
       if (i == position) {
-        DBG << ">" << _population.individualAt(i).fitness() << "<";
+        //DBG << ">" << _population.individualAt(i).fitness() << "<";
       } else if (i == best) {
-        DBG << "(" << _population.individualAt(i).fitness() << ")";
+        //DBG << "(" << _population.individualAt(i).fitness() << ")";
       } else {
-        DBG << " " << _population.individualAt(i).fitness() << " ";
+        //DBG << " " << _population.individualAt(i).fitness() << " ";
       }
     }
 

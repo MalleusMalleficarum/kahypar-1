@@ -386,6 +386,7 @@ struct EvolutionaryParameters {
   mutable std::vector<ClusterID> communities;
   bool unlimited_coarsening_contraction;
   bool random_vcycles;
+  bool parallel_partitioning_quick_start;
 };
 
 inline std::ostream& operator<< (std::ostream& str, const EvolutionaryParameters& params) {
