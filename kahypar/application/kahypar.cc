@@ -63,7 +63,7 @@ int main(int argc, char* argv[]) {
   kahypar::processCommandLineInput(context, argc, argv);
 
   kahypar::sanityCheck(context);
-
+  context.partition.seed = context.partition.seed + rank;
   if (!context.partition.quiet_mode) {
     kahypar::io::printBanner();
   }

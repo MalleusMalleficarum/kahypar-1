@@ -519,7 +519,7 @@ po::options_description createEvolutionaryOptionsDescription(Context& context,
     }),
     "Whether combine operations should not be limited in contraction\n"
     "default: on)")
-    ("uick-start",
+    ("fast-initial-population",
     po::value<bool>()->value_name("<bool>")->notifier(
       [&](const bool& quick_start) {
       context.evolutionary.parallel_partitioning_quick_start = quick_start;

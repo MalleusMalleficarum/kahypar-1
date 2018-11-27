@@ -48,26 +48,34 @@ class ParallelPartitioner {
   explicit ParallelPartitioner(const Context& context) :
     _timelimit(),
     _population(),
-    _mpi_communicator(MPI_COMM_WORLD) {
+    _mpi_communicator(MPI_COMM_WORLD),
+    _mpi_rank(),
+    _mpi_size() {
     MPI_Comm_rank(_mpi_communicator, &_mpi_rank);
     MPI_Comm_size(_mpi_communicator, &_mpi_size);
     _timelimit = context.partition.time_limit;
   }
+  ParallelPartitioner(const ParallelPartitioner&) = delete;
+  ParallelPartitioner& operator= (const ParallelPartitioner&) = delete;
+
+  ParallelPartitioner(ParallelPartitioner&&) = delete;
+  ParallelPartitioner& operator= (ParallelPartitioner&&) = delete;
+
+  ~ParallelPartitioner() = default;
 
   inline void partition(Hypergraph& hg, Context& context) {
 
-    Context subcontext(context);
     
     context.partition_evolutionary = true;
-    context.partition.seed = context.partition.seed + _mpi_rank;
+    
     LOG << "Rank " << _mpi_rank << "seed: " << context.partition.seed;
-    Exchanger exchanger(_mpi_communicator);
+    Exchanger exchanger(_mpi_communicator, hg.initialNumNodes());
 
     generateInitialPopulation(hg, context);
 
 
     while (Timer::instance().evolutionaryResult().total_evolutionary <= _timelimit) {
-      ++subcontext.evolutionary.iteration;
+      ++context.evolutionary.iteration;
 
 
       if (context.evolutionary.diversify_interval != -1 &&
@@ -81,11 +89,11 @@ class ParallelPartitioner {
       switch (decision) {
         case EvoDecision::mutation:
           performMutation(hg, context);
-          DBG << _population << "Rank " << _mpi_rank;
+          DBG << "Population " << _population << "Rank " << _mpi_rank;
           break;
         case EvoDecision::combine:
           performCombine(hg, context);
-          DBG << _population << "Rank " << _mpi_rank;
+          DBG << "Population " << _population << "Rank " << _mpi_rank;
           break;
         default:
           LOG << "Error in evo_partitioner.h: Non-covered case in decision making";
@@ -96,13 +104,13 @@ class ParallelPartitioner {
      
       for(unsigned i = 0; i < messages; ++i) {
 
-        exchanger.sendBestIndividual(context,hg, _population);
+        exchanger.sendBestIndividual(_population);
         exchanger.receiveIndividual(context,hg, _population);
       }
       
     }
     
-    exchanger.collectBestPartition(_population, context, hg);    
+    exchanger.collectBestPartition(_population, hg);    
     hg.reset();
     hg.setPartition(_population.individualAt(_population.best()).partition());
   }
@@ -119,9 +127,7 @@ class ParallelPartitioner {
     // INITIAL POPULATION
     if (context.evolutionary.dynamic_population_size) {
       HighResClockTimepoint start = std::chrono::high_resolution_clock::now();
-      DBG << "TRYING TO GENERATE AN INDIVIDUAL";
       _population.generateIndividual(hg, context);
-      DBG << "TRYING TO GENERATE AN INDIVIDUAL .... SUCCESS";
       HighResClockTimepoint end = std::chrono::high_resolution_clock::now();
       Timer::instance().add(context, Timepoint::evolutionary,
                             std::chrono::duration<double>(end - start).count());
@@ -135,7 +141,7 @@ class ParallelPartitioner {
 
       context.evolutionary.population_size = std::min(minimal_size, 50);
       DBG << context.evolutionary.population_size << "Rank " << _mpi_rank << "before";
-      DBG << _population;
+      DBG << "Population " << _population << "Rank " << _mpi_rank;
       MPI_Bcast(&context.evolutionary.population_size, 1, MPI_INT, 0, _mpi_communicator);
       DBG << context.evolutionary.population_size << "Rank " << _mpi_rank << "after";
     }
@@ -144,9 +150,9 @@ class ParallelPartitioner {
     DBG << context.evolutionary.edge_frequency_amount;
     
     
-    int desired_repetitions_for_initial_partitioning;
+    size_t desired_repetitions_for_initial_partitioning;
     if(context.evolutionary.parallel_partitioning_quick_start) {
-      desired_repetitions_for_initial_partitioning = ceil(context.evolutionary.population_size / _mpi_size);
+      desired_repetitions_for_initial_partitioning = ceil((float) context.evolutionary.population_size / _mpi_size);
     }
     else {
       desired_repetitions_for_initial_partitioning = context.evolutionary.population_size;
@@ -164,11 +170,11 @@ class ParallelPartitioner {
                             std::chrono::duration<double>(end - start).count());
       io::serializer::serializeEvolutionary(context, hg);
       verbose(context, 0);
-      DBG << _population;
+      DBG << "Population " << _population << "Rank " << _mpi_rank;
     }
     
     if(context.evolutionary.parallel_partitioning_quick_start) {
-      Exchanger exchanger(_mpi_communicator);
+      Exchanger exchanger(_mpi_communicator, hg.initialNumNodes());
       exchanger.exchangeInitialPopulations(_population, context, hg, desired_repetitions_for_initial_partitioning);
     }
     
@@ -273,7 +279,6 @@ class ParallelPartitioner {
   
   
   MPI_Comm _mpi_communicator;
-  unsigned _MPI_MASTER;
   int _mpi_rank;
   int _mpi_size;
   

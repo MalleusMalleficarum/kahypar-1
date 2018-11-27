@@ -1,7 +1,7 @@
 #pragma once
 
 
-
+#include "kahypar/partition/parallel/partition_buffer.h"
 namespace kahypar {
 
 
@@ -9,29 +9,39 @@ class Exchanger {
   
 
  public: 
-  Exchanger(MPI_Comm communicator) : 
+  Exchanger(MPI_Comm communicator, size_t hypergraph_size) : 
     _current_best_fitness(std::numeric_limits<int>::max()),
+    _generator(),
     _maximum_allowed_pushes(),
     _number_of_pushes(),
     _rank(),
     _individual_already_sent_to(),
     _partition_buffer(),
-    _request_list(),
+    _MPI_Partition(),
     _m_communicator(communicator) {
-      int rank;
-      MPI_Comm_rank( _m_communicator, &rank);
-      _rank = rank;
+    
+      MPI_Comm_rank( _m_communicator, &_rank);
       int comm_size;
       MPI_Comm_size( _m_communicator, &comm_size);
-      if(comm_size > 2) {_maximum_allowed_pushes = ceil(log2(comm_size));}
-      else              {_maximum_allowed_pushes = 1;}
-      MPI_Datatype MPI_Partition;
-      MPI_Type_contiguous(hg.initialNumNodes(), MPI_UINT, &partition);
-      MPI_Type_commit(&partition);
-      
+      if(comm_size > 2) {
+        _maximum_allowed_pushes = ceil(log2(comm_size));
+      }
+      else {
+        _maximum_allowed_pushes = 1;
+      }
+
+      _generator.seed(1);
       _individual_already_sent_to = std::vector<bool>(comm_size);
+      
+      MPI_Type_contiguous(hypergraph_size, MPI_INT, &_MPI_Partition);
+      MPI_Type_commit(&_MPI_Partition);
     }
-  
+  Exchanger(const Exchanger&) = delete;
+  Exchanger& operator= (const Exchanger&) = delete;
+
+  Exchanger(Exchanger&&) = delete;
+  Exchanger& operator= (Exchanger&&) = delete;
+
   ~Exchanger() {
       MPI_Barrier( _m_communicator );
         
@@ -50,21 +60,11 @@ class Exchanger {
         delete[] partition_map;
         MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, _m_communicator, &flag, &st);
       } 
-
+      MPI_Free(_MPI_Partition);
       MPI_Barrier( _m_communicator );
-      for( unsigned i = 0; i < _request_list.size(); i++) {
-              MPI_Cancel( _request_list[i] );
-      }
-        
-      for( unsigned i = 0; i < _request_list.size(); i++) {
-        MPI_Status st;
-        MPI_Wait( _request_list[i], & st );
-        delete[] _partition_buffer[i];
-        delete   _request_list[i];
-      }
     }          
   
-  inline void sendBestIndividual(const Context& context, const Hypergraph& hg, const Population& population) {
+  inline void sendBestIndividual(const Population& population) {
 
     if(population.individualAt(population.best()).fitness() < _current_best_fitness) {
       
@@ -97,6 +97,7 @@ class Exchanger {
       std::vector<int> randomized_targets(_individual_already_sent_to.size());
       std::iota(std::begin(randomized_targets), std::end(randomized_targets), 0);
       Randomize::instance().shuffleVector(randomized_targets, randomized_targets.size());
+      
       for(unsigned i = 0; i < _individual_already_sent_to.size(); ++i) { 
         int current_target = randomized_targets[i];
 	      if(!_individual_already_sent_to[current_target]) {
@@ -107,127 +108,114 @@ class Exchanger {
       
 
       
-      DBG << "Rank " << _rank << " sending to " << new_target << "...";
-      std::vector<PartitionID> partition_vector = population.individualAt(population.best()).partition();
+      DBG << "Rank " << _rank << " sending to " << new_target << "..."<< "fitness " << population.individualAt(population.best()).fitness();
+      const std::vector<PartitionID>& partition_vector = population.individualAt(population.best()).partition();
       int* partition_map = new int[partition_vector.size()];
 
-      for(int i = 0; i < partition_vector.size(); ++i) {
+      for(size_t i = 0; i < partition_vector.size(); ++i) {
         partition_map[i] = partition_vector[i];
-        std::cout << partition_vector[i] << " ";
       }
       
       MPI_Request* request = new MPI_Request();
-      MPI_Isend(partition_map, hg.initialNumNodes(), MPI_INT, new_target, new_target, _m_communicator, request);
+      MPI_Isend(partition_map, 1, _MPI_Partition, new_target, new_target, _m_communicator, request);
       _number_of_pushes++;
       _individual_already_sent_to[new_target] = true;
-      _request_list.push_back(request); 
-      //_partition_buffer.push_back(partition_vector.data());
-      _partition_buffer.push_back(partition_map);
-      
-      DBG << "Rank " << _rank << " sending to " << new_target << "success";
+      _partition_buffer.acquireBuffer(request, partition_map);
     }
-    for(unsigned i = 0; i < _request_list.size(); ++i) {
-      int finished = 0;
-      MPI_Status status;
-      MPI_Test(_request_list[i], &finished, &status);
-      if(finished) {
-        std::swap(_request_list[i], _request_list[_request_list.size()-1]);
-        std::swap(_partition_buffer[i], _partition_buffer[_request_list.size()-1]);
+    _partition_buffer.releaseBuffer();
 
-        delete[] _partition_buffer[_partition_buffer.size() - 1];
-        delete   _request_list[_request_list.size() - 1];
-
-        _partition_buffer.pop_back();
-        _request_list.pop_back();
-      }
-    }
   }
   
   inline void receiveIndividual(const Context& context, Hypergraph& hg, Population& population) {
+
     int flag; 
     MPI_Status st;
     MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, _m_communicator, &flag, &st);
     
-    while(flag){
-      DBG << "Rank " << _rank << "recieving...";
-
-      int* partition_vector_pointer = new int[hg.initialNumNodes()];
-
-      
-      DBG << hg.initialNumNodes() << _rank;
-    
-      MPI_Status rst;
-      MPI_Recv(partition_vector_pointer, hg.initialNumNodes(), MPI_INT, st.MPI_SOURCE, _rank, _m_communicator, &rst); 
-      DBG << "until here breakpoint rank " << _rank;
-      std::vector<PartitionID> result_individual_partition(partition_vector_pointer, partition_vector_pointer + hg.initialNumNodes());
-      DBG << "Breakpoint A" << "Rank " << _rank;
-      for(int i = 0; i < result_individual_partition.size(); ++i) {
-        std::cout << result_individual_partition[i] << " ";
-      }
-      DBG << "Breakpoint B" << "Rank " << _rank;
-      hg.reset();
-      hg.setPartition(result_individual_partition);
-      size_t insertion_value = population.insert(Individual(hg, context), context);
-      int recieved_fitness = population.individualAt(insertion_value).fitness();
-      DBG << "Rank " << _rank << "recieved Individual from" << st.MPI_SOURCE << "with fitness" << recieved_fitness;
-      
-      
-      if(insertion_value == std::numeric_limits<int>::max()) {
-        DBG << "INSERTION DISCARDED";
-      }
-      
-      if(recieved_fitness < _current_best_fitness) {
-      
-        _current_best_fitness = recieved_fitness;
-                       
-        for(unsigned i = 0; i < _individual_already_sent_to.size(); ++i) {
-          _individual_already_sent_to[i] = false;
-        }
-        _individual_already_sent_to[_rank] = true;
-        _number_of_pushes = 0;
-      }
-      _individual_already_sent_to[st.MPI_SOURCE] = true;
-      
-      MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, _m_communicator, &flag, &st);
-      DBG << "Rank " << _rank << "recieving Success";
+    while(flag) {
+    int* partition_vector_pointer = new int[hg.initialNumNodes()];
+    MPI_Status rst;
+    MPI_Recv(partition_vector_pointer, 1, _MPI_Partition, st.MPI_SOURCE, _rank, _m_communicator, &rst); 
+    std::vector<PartitionID> result_individual_partition(partition_vector_pointer, partition_vector_pointer + hg.initialNumNodes());
+    hg.reset();
+    hg.setPartition(result_individual_partition);
+    size_t insertion_value = population.insert(Individual(hg, context), context);
+    if(insertion_value == std::numeric_limits<unsigned>::max()) {
+      DBG << "INSERTION DISCARDED";
+      return;
     }
+    int recieved_fitness = population.individualAt(insertion_value).fitness();
+    DBG << "Rank " << _rank << "recieved Individual from" << st.MPI_SOURCE << "with fitness" << recieved_fitness;
+     
+    if(recieved_fitness < _current_best_fitness) {
+      
+      _current_best_fitness = recieved_fitness;
+                       
+      for(unsigned i = 0; i < _individual_already_sent_to.size(); ++i) {
+        _individual_already_sent_to[i] = false;
+      }
+      _individual_already_sent_to[_rank] = true;
+      _number_of_pushes = 0;
+    }
+    _individual_already_sent_to[st.MPI_SOURCE] = true;
+      
+     MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, _m_communicator, &flag, &st);
+     }
   }
+  
   inline void exchangeInitialPopulations(Population& population, const Context& context, Hypergraph& hg, const int& amount_of_individuals_already_generated) {
-    int number_of_exchanges_required = context.evolutionary.population_size - amount_of_individuals_already_generated - 1;
+    int number_of_exchanges_required = context.evolutionary.population_size - amount_of_individuals_already_generated;
     if(number_of_exchanges_required < 0) {
       number_of_exchanges_required = 0;
     }
     for(int i = 0; i < number_of_exchanges_required; ++i) {
       exchangeIndividuals(population, context, hg);
+      DBG << "Population " << population << "Rank " << _rank;
     }
     
   }
   inline void exchangeIndividuals(Population& population, const Context& context, Hypergraph& hg) {
-    
+
     
     int amount_of_mpi_processes;
     MPI_Comm_size( _m_communicator, &amount_of_mpi_processes);
-    std::vector<int> somehow_permutated(amount_of_mpi_processes);
-    std::iota (std::begin(somehow_permutated), std::end(somehow_permutated), 0);
-    Randomize::instance().shuffleVector(somehow_permutated, somehow_permutated.size());
-    int sending_to = somehow_permutated[_rank];
+    std::vector<int> permutation_of_mpi_process_numbers(amount_of_mpi_processes);
+    DBG << "Rank " << _rank << "length " << permutation_of_mpi_process_numbers.size();
+
+    
+
+    /*This randomization is independent from the algorithm and has to use its own seed to
+      ensure that all Mpi threads generate the same permutation */  
+      
+        
+    std::iota (std::begin(permutation_of_mpi_process_numbers), std::end(permutation_of_mpi_process_numbers), 0);
+    std::shuffle(permutation_of_mpi_process_numbers.begin(),
+                 permutation_of_mpi_process_numbers.begin() + permutation_of_mpi_process_numbers.size() , _generator);
+    
+    int sending_to = permutation_of_mpi_process_numbers[_rank];
     int recieving_from = 0;
-    for(unsigned i = 0; i < somehow_permutated.size(); ++i) {
-      if (somehow_permutated[i] == _rank) {
+    for(unsigned i = 0; i < permutation_of_mpi_process_numbers.size(); ++i) {
+      if (permutation_of_mpi_process_numbers[i] == _rank) {
         recieving_from = i;
         break;
       }
     }
-    
-    
+       
     std::vector<PartitionID> outgoing_partition = population.individualAt(population.randomIndividual()).partition();
+    int* outgoing_partition_map = new int[outgoing_partition.size()];
+    for(size_t i = 0; i < outgoing_partition.size(); ++i) {
+      outgoing_partition_map[i] = outgoing_partition[i];
+    }
     int* recieved_partition_pointer = new int[outgoing_partition.size()];
-    MPI_Status st;
-    MPI_Sendrecv( outgoing_partition.data(), outgoing_partition.size(), MPI_INT, sending_to, 0, 
-                  recieved_partition_pointer, outgoing_partition.size(), MPI_INT, recieving_from, 0, _m_communicator, &st); 
-                  
     DBG << "Rank " << _rank << "sending to " << sending_to << "quick_start";
+    MPI_Status st;
+    MPI_Sendrecv( outgoing_partition.data(), 1, _MPI_Partition, sending_to, 0, 
+                  recieved_partition_pointer, 1, _MPI_Partition, recieving_from, 0, _m_communicator, &st); 
+                  
+
     std::vector<int> recieved_partition_vector(recieved_partition_pointer, recieved_partition_pointer + outgoing_partition.size());
+    
+    
     hg.reset();
     hg.setPartition(recieved_partition_vector);
     population.insert(Individual(hg, context), context);
@@ -241,47 +229,40 @@ class Exchanger {
   
   
   
-  inline void collectBestPartition(const Population& population, const Context& context, Hypergraph& hg) {
-     std::vector<PartitionID> best_local_partition(population.individualAt(population.best()).partition());
-     int best_local_objective = population.individualAt(population.best()).fitness();
-     DBG << "Rank " << _rank << " best local objective" << best_local_objective;
-     int best_global_objective = 0;
-     //Maybee i need a temporary variable, lets debug
-     MPI_Allreduce(&best_local_objective, &best_global_objective, 1, MPI_INT, MPI_MIN, _m_communicator);
+  inline void collectBestPartition(const Population& population, Hypergraph& hg) {
+    DBG << "Collect Best Partition";
+    std::vector<PartitionID> best_local_partition(population.individualAt(population.best()).partition());
+    int best_local_objective = population.individualAt(population.best()).fitness();
+    int best_global_objective = 0;
+    
+    MPI_Allreduce(&best_local_objective, &best_global_objective, 1, MPI_INT, MPI_MIN, _m_communicator);
+    
+    int broadcast_rank = std::numeric_limits<int>::max();
+    int global_broadcaster = 0;
+    
+    if(best_local_objective == best_global_objective) {
+      broadcast_rank = _rank;
+    }
+    
+    MPI_Allreduce(&broadcast_rank, &global_broadcaster, 1, MPI_INT, MPI_MIN, _m_communicator);
+    MPI_Bcast(best_local_partition.data(), hg.initialNumNodes(), MPI_INT, global_broadcaster, _m_communicator);
      
-     DBG << "Rank " << _rank << " best local objective" << best_local_objective;
-     int broadcast_rank = std::numeric_limits<int>::max();
-     int global_broadcaster = 0;
-     if(best_local_objective == best_global_objective) {
-       broadcast_rank = _rank;
-     }
-     DBG << "Rank " << _rank << " broadcast_rank" << broadcast_rank;
-     MPI_Allreduce(&broadcast_rank, &global_broadcaster, 1, MPI_INT, MPI_MIN, _m_communicator);
-     MPI_Bcast(best_local_partition.data(), hg.initialNumNodes(), MPI_INT, global_broadcaster, _m_communicator);
-     
-     hg.setPartition(best_local_partition);
+    hg.setPartition(best_local_partition);
   }
   
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+
   
  private: 
  
+  
   HyperedgeWeight _current_best_fitness;
+  std::mt19937 _generator;
   int _maximum_allowed_pushes;
   int _number_of_pushes;
   int _rank;
   std::vector<bool> _individual_already_sent_to;
-  std::vector<int*> _partition_buffer;
-  std::vector<MPI_Request*> _request_list;
+  PartitionBuffer _partition_buffer;
+  MPI_Datatype _MPI_Partition;
   MPI_Comm _m_communicator;
   
   static constexpr bool debug = true;

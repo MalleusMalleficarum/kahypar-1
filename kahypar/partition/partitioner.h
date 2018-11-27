@@ -270,7 +270,6 @@ inline void Partitioner::partition(Hypergraph& hypergraph, Context& context) {
 
   setupContext(hypergraph, context);
   io::printInputInformation(context, hypergraph);
-
   sanitize(hypergraph, context);
   DBG << "TRYING TO GENERATE AN INDIVIDUAL";
   if (context.preprocessing.min_hash_sparsifier.is_active) {

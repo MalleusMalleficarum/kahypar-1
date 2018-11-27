@@ -101,7 +101,7 @@ class Population {
   inline const Individual & generateIndividual(Hypergraph& hg, Context& context) {
     Partitioner partitioner;
     hg.reset();
-    DBG << "TRYING TO GENERATE AN INDIVIDUAL";
+    DBG << "TRYING TO GENERATE AN INDIVIDUAL"; 
     partitioner.partition(hg, context);
     _individuals.emplace_back(Individual(hg, context));
     if (_individuals.size() > context.evolutionary.population_size) {
