@@ -60,7 +60,7 @@ class Exchanger {
         delete[] partition_map;
         MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, _m_communicator, &flag, &st);
       } 
-      MPI_Free(_MPI_Partition);
+      MPI_Type_free(&_MPI_Partition);
       MPI_Barrier( _m_communicator );
     }          
   
