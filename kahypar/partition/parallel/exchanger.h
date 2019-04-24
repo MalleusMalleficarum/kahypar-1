@@ -230,7 +230,7 @@ class Exchanger {
   
   
   inline void collectBestPartition(const Population& population, Hypergraph& hg) {
-    DBG << "Collect Best Partition";
+    DBG << "Collect Best Partition" << " Rank " << _rank;
     std::vector<PartitionID> best_local_partition(population.individualAt(population.best()).partition());
     int best_local_objective = population.individualAt(population.best()).fitness();
     int best_global_objective = 0;

@@ -400,6 +400,18 @@ inline std::ostream& operator<< (std::ostream& str, const EvolutionaryParameters
   str << "  Diversification Interval            " << params.diversify_interval << std::endl;
   return str;
 }
+struct MPIParameters {
+  MPI_Comm communicator;
+  int rank;
+  int size;
+};
+
+inline std::ostream& operator<< (std::ostream& str, const MPIParameters& params) {
+  str << "MPI Parameters:              " << std::endl;
+  str << "  rank                                " << params.rank << std::endl;
+  str << "  size                                " << params.size << std::endl;
+  return str;
+}
 
 class Context {
  public:
@@ -411,6 +423,7 @@ class Context {
   InitialPartitioningParameters initial_partitioning { };
   LocalSearchParameters local_search { };
   EvolutionaryParameters evolutionary { };
+  MPIParameters mpi{  };
   ContextType type = ContextType::main;
   mutable PartitioningStats stats;
   bool partition_evolutionary = false;
@@ -425,6 +438,7 @@ class Context {
     initial_partitioning(other.initial_partitioning),
     local_search(other.local_search),
     evolutionary(other.evolutionary),
+    mpi(other.mpi),
     type(other.type),
     stats(*this, &other.stats.topLevel()),
     partition_evolutionary(other.partition_evolutionary) { }
