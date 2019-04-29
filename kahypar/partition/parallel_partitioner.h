@@ -42,12 +42,12 @@ namespace kahypar {
 namespace partition {
 class ParallelPartitioner {
  private:
-  static constexpr bool debug = true;
+  static constexpr bool debug = false;
 
  public:
   explicit ParallelPartitioner(const Context& context) :
     _timelimit(),
-    _population(){
+    _population(context){
     _timelimit = context.partition.time_limit;
   }
   ParallelPartitioner(const ParallelPartitioner&) = delete;
@@ -63,7 +63,9 @@ class ParallelPartitioner {
     
     context.partition_evolutionary = true;
     
-    LOG << "Rank " << context.mpi.rank << "seed: " << context.partition.seed;
+    LOG <<" MPIRank " << context.mpi.rank << ":" << "seed: " << context.partition.seed;
+    
+    
     Exchanger exchanger(context.mpi.communicator, hg.initialNumNodes());
 
     generateInitialPopulation(hg, context);
@@ -84,11 +86,11 @@ class ParallelPartitioner {
       switch (decision) {
         case EvoDecision::mutation:
           performMutation(hg, context);
-          DBG << "Population " << _population << "Rank " << context.mpi.rank;
+          LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
           break;
         case EvoDecision::combine:
           performCombine(hg, context);
-          DBG << "Population " << _population << "Rank " << context.mpi.rank;
+          LOG <<" MPIRank " << context.mpi.rank << ":" << "Population " << _population;
           break;
         default:
           LOG << "Error in evo_partitioner.h: Non-covered case in decision making";
@@ -123,6 +125,7 @@ class ParallelPartitioner {
     if (context.evolutionary.dynamic_population_size) {
       HighResClockTimepoint start = std::chrono::high_resolution_clock::now();
       _population.generateIndividual(hg, context);
+      LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
       HighResClockTimepoint end = std::chrono::high_resolution_clock::now();
       Timer::instance().add(context, Timepoint::evolutionary,
                             std::chrono::duration<double>(end - start).count());
@@ -135,14 +138,14 @@ class ParallelPartitioner {
       int minimal_size = std::max(dynamic_population_size, 3);
 
       context.evolutionary.population_size = std::min(minimal_size, 50);
-      DBG << context.evolutionary.population_size << "Rank " << context.mpi.rank << "before";
-      DBG << "Population " << _population << "Rank " << context.mpi.rank;
+      LOG <<" MPIRank " << context.mpi.rank << ":"  << context.evolutionary.population_size << "before";
+      //LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
       MPI_Bcast(&context.evolutionary.population_size, 1, MPI_INT, 0, context.mpi.communicator);
-      DBG << context.evolutionary.population_size << "Rank " << context.mpi.rank << "after";
+      LOG <<" MPIRank " << context.mpi.rank << ":"  << context.evolutionary.population_size  << "after";
     }
     context.evolutionary.edge_frequency_amount = sqrt(context.evolutionary.population_size);
-    DBG << "EDGE-FREQUENCY-AMOUNT";
-    DBG << context.evolutionary.edge_frequency_amount;
+    DBG <<" MPIRank " << context.mpi.rank << ":"  << "EDGE-FREQUENCY-AMOUNT";
+    DBG <<" MPIRank " << context.mpi.rank << ":"  << context.evolutionary.edge_frequency_amount;
     
     
     size_t desired_repetitions_for_initial_partitioning;
@@ -152,8 +155,8 @@ class ParallelPartitioner {
     else {
       desired_repetitions_for_initial_partitioning = context.evolutionary.population_size;
     }
-    DBG << "desired_repetitions "<<desired_repetitions_for_initial_partitioning  << "Rank " << context.mpi.rank;
-    DBG << "context.evolutionary.population_size "<<context.evolutionary.population_size  << "Rank " << context.mpi.rank;
+    DBG <<" MPIRank " << context.mpi.rank << ":"  << "desired_repetitions "<<desired_repetitions_for_initial_partitioning;
+    DBG <<" MPIRank " << context.mpi.rank << ":"  << "context.evolutionary.population_size "<<context.evolutionary.population_size;
     
     while (_population.size() < desired_repetitions_for_initial_partitioning &&
            Timer::instance().evolutionaryResult().total_evolutionary <= _timelimit) {
@@ -165,7 +168,7 @@ class ParallelPartitioner {
                             std::chrono::duration<double>(end - start).count());
       io::serializer::serializeEvolutionary(context, hg);
       verbose(context, 0);
-      DBG << "Population " << _population << "Rank " << context.mpi.rank;
+      DBG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
     }
     
     if(context.evolutionary.parallel_partitioning_quick_start) {
@@ -190,11 +193,13 @@ class ParallelPartitioner {
     switch (context.evolutionary.combine_strategy) {
       case EvoCombineStrategy::basic: {
           size_t insert_position = _population.insert(combine::usingTournamentSelection(hg, context, _population), context);
+          LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
           verbose(context, insert_position);
           break;
         }
       case EvoCombineStrategy::edge_frequency: {
           size_t insert_position = _population.insert(combine::edgeFrequency(hg, context, _population), context);
+          LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
           verbose(context, insert_position);
           break;
         }
@@ -213,8 +218,8 @@ class ParallelPartitioner {
     const size_t mutation_position = _population.randomIndividual();
     EvoMutateStrategy original_strategy = context.evolutionary.mutate_strategy;
     context.evolutionary.mutate_strategy = pick::appropriateMutateStrategy(context);
-    DBG << V(context.evolutionary.mutate_strategy);
-    DBG << V(mutation_position);
+    DBG <<" MPIRank " << context.mpi.rank << ":"  << V(context.evolutionary.mutate_strategy);
+    DBG <<" MPIRank " << context.mpi.rank << ":" << V(mutation_position);
     switch (context.evolutionary.mutate_strategy) {
       case EvoMutateStrategy::new_initial_partitioning_vcycle:
 
@@ -222,11 +227,13 @@ class ParallelPartitioner {
           mutate::vCycleWithNewInitialPartitioning(hg,
                                                    _population.individualAt(mutation_position),
                                                    context), context);
+        LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
         verbose(context, mutation_position);
         break;
       case EvoMutateStrategy::vcycle:
         _population.insert(
           mutate::vCycle(hg, _population.individualAt(mutation_position), context), context);
+        LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
         verbose(context, mutation_position);
         break;
       case EvoMutateStrategy::UNDEFINED:
@@ -267,7 +274,9 @@ class ParallelPartitioner {
     }
 
   }
-
+  inline void print(const Context& context) {
+    
+  }
 
   int _timelimit;
   Population _population;

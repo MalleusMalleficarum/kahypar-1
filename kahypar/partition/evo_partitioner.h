@@ -45,7 +45,7 @@ class EvoPartitioner {
  public:
   explicit EvoPartitioner(const Context& context) :
     _timelimit(),
-    _population() {
+    _population(context) {
     _timelimit = context.partition.time_limit;
   }
 

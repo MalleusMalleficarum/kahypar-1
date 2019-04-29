@@ -144,6 +144,9 @@ class Exchanger {
       DBG << "INSERTION DISCARDED";
       return;
     }
+    else {
+      LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << population;
+    }
     int recieved_fitness = population.individualAt(insertion_value).fitness();
     DBG << "Rank " << _rank << "recieved Individual from" << st.MPI_SOURCE << "with fitness" << recieved_fitness;
      
@@ -219,6 +222,7 @@ class Exchanger {
     hg.reset();
     hg.setPartition(recieved_partition_vector);
     population.insert(Individual(hg, context), context);
+    LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << population;
   }
   
   
@@ -239,12 +243,13 @@ class Exchanger {
     
     int broadcast_rank = std::numeric_limits<int>::max();
     int global_broadcaster = 0;
-    
+    DBG <<"Rank " << _rank << " " << best_local_objective << " " << best_global_objective;
     if(best_local_objective == best_global_objective) {
       broadcast_rank = _rank;
     }
     
     MPI_Allreduce(&broadcast_rank, &global_broadcaster, 1, MPI_INT, MPI_MIN, _m_communicator);
+    DBG << "Rank " << _rank << " " << broadcast_rank;
     MPI_Bcast(best_local_partition.data(), hg.initialNumNodes(), MPI_INT, global_broadcaster, _m_communicator);
      
     hg.setPartition(best_local_partition);
