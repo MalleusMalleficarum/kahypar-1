@@ -86,11 +86,11 @@ class ParallelPartitioner {
       switch (decision) {
         case EvoDecision::mutation:
           performMutation(hg, context);
-          LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
+          //LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population << "mutation";
           break;
         case EvoDecision::combine:
           performCombine(hg, context);
-          LOG <<" MPIRank " << context.mpi.rank << ":" << "Population " << _population;
+          //LOG <<" MPIRank " << context.mpi.rank << ":" << "Population " << _population;
           break;
         default:
           LOG << "Error in evo_partitioner.h: Non-covered case in decision making";
@@ -106,10 +106,14 @@ class ParallelPartitioner {
       }
       
     }
-    
-    exchanger.collectBestPartition(_population, hg);    
+    HighResClockTimepoint start = std::chrono::high_resolution_clock::now();      
+    MPI_Barrier(MPI_COMM_WORLD);
+    exchanger.collectBestPartition(_population, hg, context);    
     hg.reset();
     hg.setPartition(_population.individualAt(_population.best()).partition());
+    HighResClockTimepoint end = std::chrono::high_resolution_clock::now();
+    Timer::instance().add(context, Timepoint::evolutionary,
+                            std::chrono::duration<double>(end - start).count());
   }
 
   const std::vector<PartitionID> & bestPartition() const {
@@ -125,7 +129,7 @@ class ParallelPartitioner {
     if (context.evolutionary.dynamic_population_size) {
       HighResClockTimepoint start = std::chrono::high_resolution_clock::now();
       _population.generateIndividual(hg, context);
-      LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
+      LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population <<" generateInitialPopulation";
       HighResClockTimepoint end = std::chrono::high_resolution_clock::now();
       Timer::instance().add(context, Timepoint::evolutionary,
                             std::chrono::duration<double>(end - start).count());
@@ -138,10 +142,10 @@ class ParallelPartitioner {
       int minimal_size = std::max(dynamic_population_size, 3);
 
       context.evolutionary.population_size = std::min(minimal_size, 50);
-      LOG <<" MPIRank " << context.mpi.rank << ":"  << context.evolutionary.population_size << "before";
+      //LOG <<" MPIRank " << context.mpi.rank << ":"  << context.evolutionary.population_size << "before";
       //LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
       MPI_Bcast(&context.evolutionary.population_size, 1, MPI_INT, 0, context.mpi.communicator);
-      LOG <<" MPIRank " << context.mpi.rank << ":"  << context.evolutionary.population_size  << "after";
+      //LOG <<" MPIRank " << context.mpi.rank << ":"  << context.evolutionary.population_size  << "after";
     }
     context.evolutionary.edge_frequency_amount = sqrt(context.evolutionary.population_size);
     DBG <<" MPIRank " << context.mpi.rank << ":"  << "EDGE-FREQUENCY-AMOUNT";
@@ -193,13 +197,13 @@ class ParallelPartitioner {
     switch (context.evolutionary.combine_strategy) {
       case EvoCombineStrategy::basic: {
           size_t insert_position = _population.insert(combine::usingTournamentSelection(hg, context, _population), context);
-          LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
+          LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population << " basic combine";
           verbose(context, insert_position);
           break;
         }
       case EvoCombineStrategy::edge_frequency: {
           size_t insert_position = _population.insert(combine::edgeFrequency(hg, context, _population), context);
-          LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
+          LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population << " edge frequency combine";
           verbose(context, insert_position);
           break;
         }
@@ -227,13 +231,13 @@ class ParallelPartitioner {
           mutate::vCycleWithNewInitialPartitioning(hg,
                                                    _population.individualAt(mutation_position),
                                                    context), context);
-        LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
+        LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population << " vcyclenewIP mutation";
         verbose(context, mutation_position);
         break;
       case EvoMutateStrategy::vcycle:
         _population.insert(
           mutate::vCycle(hg, _population.individualAt(mutation_position), context), context);
-        LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population;
+        LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << _population << " vcycle mutation";
         verbose(context, mutation_position);
         break;
       case EvoMutateStrategy::UNDEFINED:

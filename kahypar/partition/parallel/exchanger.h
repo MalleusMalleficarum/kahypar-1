@@ -145,7 +145,7 @@ class Exchanger {
       return;
     }
     else {
-      LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << population;
+      LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << population << "recieve individual exchanger.h l.148";
     }
     int recieved_fitness = population.individualAt(insertion_value).fitness();
     DBG << "Rank " << _rank << "recieved Individual from" << st.MPI_SOURCE << "with fitness" << recieved_fitness;
@@ -222,7 +222,7 @@ class Exchanger {
     hg.reset();
     hg.setPartition(recieved_partition_vector);
     population.insert(Individual(hg, context), context);
-    LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << population;
+    LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << population << "exchange individuals exchanger.h l.225";
   }
   
   
@@ -233,7 +233,7 @@ class Exchanger {
   
   
   
-  inline void collectBestPartition(const Population& population, Hypergraph& hg) {
+  inline void collectBestPartition(Population& population, Hypergraph& hg, const Context& context) {
     DBG << "Collect Best Partition" << " Rank " << _rank;
     std::vector<PartitionID> best_local_partition(population.individualAt(population.best()).partition());
     int best_local_objective = population.individualAt(population.best()).fitness();
@@ -253,6 +253,7 @@ class Exchanger {
     MPI_Bcast(best_local_partition.data(), hg.initialNumNodes(), MPI_INT, global_broadcaster, _m_communicator);
      
     hg.setPartition(best_local_partition);
+    population.insert(Individual(hg, context), context);
   }
   
 
