@@ -3,7 +3,11 @@
 
 
 namespace kahypar {
-
+  struct BufferElement{
+    int* partition;
+    MPI_Request* request;
+  
+  };
 class PartitionBuffer {
 
  
@@ -11,6 +15,7 @@ class PartitionBuffer {
 
   static constexpr bool debug = true;
  public: 
+
   PartitionBuffer() :
     _partition_buffer(),
     _request_buffer() {}
@@ -35,11 +40,30 @@ class PartitionBuffer {
     }
   }
 
-  void acquireBuffer(MPI_Request* request, int* partition_map) {
+  BufferElement acquireBuffer(const std::vector<PartitionID>& partition_vector) {
+    
+      int* partition_map = new int[partition_vector.size()];
+
+      for(size_t i = 0; i < partition_vector.size(); ++i) {
+        partition_map[i] = partition_vector[i];
+      }
+      
+      MPI_Request* request = new MPI_Request();
+
+    
     _partition_buffer.push_back(partition_map);
     _request_buffer.push_back(request);  
+    return BufferElement {partition_map, request};
+  }
+
+  int* getData() {
+    return _partition_buffer[0];
+  }
+  MPI_Request* getRequest() {
+    return _request_buffer[0];
   }
   
+
   void releaseBuffer() {
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -61,6 +85,7 @@ class PartitionBuffer {
       }
     }
   }
+
  private:
  
  std::vector<int*> _partition_buffer;

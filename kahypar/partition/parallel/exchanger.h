@@ -110,19 +110,14 @@ class Exchanger {
       
       DBG << "Rank " << _rank << " sending to " << new_target << "..."<< "fitness " << population.individualAt(population.best()).fitness();
       const std::vector<PartitionID>& partition_vector = population.individualAt(population.best()).partition();
-      int* partition_map = new int[partition_vector.size()];
 
-      for(size_t i = 0; i < partition_vector.size(); ++i) {
-        partition_map[i] = partition_vector[i];
-      }
-      
-      MPI_Request* request = new MPI_Request();
-      MPI_Isend(partition_map, 1, _MPI_Partition, new_target, new_target, _m_communicator, request);
+      BufferElement ele = _partition_buffer.acquireBuffer(partition_vector);
+      MPI_Isend(ele.partition, 1, _MPI_Partition, new_target, new_target, _m_communicator, ele.request);
       _number_of_pushes++;
       _individual_already_sent_to[new_target] = true;
-      _partition_buffer.acquireBuffer(request, partition_map);
+      //_partition_buffer.acquireBuffer(request, partition_map);
     }
-    _partition_buffer.releaseBuffer();
+    //_partition_buffer.releaseBuffer();
 
   }
   
@@ -137,6 +132,7 @@ class Exchanger {
     MPI_Status rst;
     MPI_Recv(partition_vector_pointer, 1, _MPI_Partition, st.MPI_SOURCE, _rank, _m_communicator, &rst); 
     std::vector<PartitionID> result_individual_partition(partition_vector_pointer, partition_vector_pointer + hg.initialNumNodes());
+    delete[] partition_vector_pointer;
     hg.reset();
     hg.setPartition(result_individual_partition);
     size_t insertion_value = population.insert(Individual(hg, context), context);
