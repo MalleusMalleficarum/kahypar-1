@@ -219,6 +219,8 @@ class Exchanger {
     hg.setPartition(recieved_partition_vector);
     population.insert(Individual(hg, context), context);
     LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << population << "exchange individuals exchanger.h l.225";
+    delete[] outgoing_partition_map;
+    delete[] recieved_partition_pointer;
   }
   
   

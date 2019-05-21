@@ -398,6 +398,7 @@ inline std::ostream& operator<< (std::ostream& str, const EvolutionaryParameters
   str << "  Combine Strategy                    " << params.combine_strategy << std::endl;
   str << "  Mutation Strategy                   " << params.mutate_strategy << std::endl;
   str << "  Diversification Interval            " << params.diversify_interval << std::endl;
+  str << "  Parallel Population Generation      " << params.parallel_partitioning_quick_start << std::endl;
   return str;
 }
 struct MPIParameters {
