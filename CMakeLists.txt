@@ -10,13 +10,13 @@ set(PROJECT_VENDOR "Sebastian Schlag")
 set(PROJECT_CONTACT "kahypar@sebastianschlag.de")
 set(PROJECT_URL "https://bitbucket.org/schlag/hypergraph")
 set(PROJECT_DESCRIPTION "KaHyPar: Karlsruhe Hypergraph Partitioning")
-    set(CMAKE_C_COMPILER /usr/bin/mpicc)
-    set(CMAKE_CXX_COMPILER /usr/bin/mpicxx)
+
 include_directories(${PROJECT_SOURCE_DIR})
 
 find_package(Threads REQUIRED)
 message(STATUS "Found Threads: ${CMAKE_THREAD_LIBS_INIT}")
-
+find_package(MPI REQUIRED)
+include_directories(${MPI_INCLUDE_PATH})
 
 
 

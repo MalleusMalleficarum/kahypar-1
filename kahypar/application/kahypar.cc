@@ -23,7 +23,7 @@
 #include <memory>
 #include <string>
 #include <unordered_set>
-#include </software/openmpi-1.5.3-progthr/include/mpi.h>
+#include <mpi.h>
 
 #include "kahypar/application/command_line_options.h"
 #include "kahypar/definitions.h"
@@ -199,7 +199,6 @@ int main(int argc, char* argv[]) {
     ParallelPartitioner partitioner(context);
     partitioner.partition(hypergraph, context);
     if(rank == 0) {
-      DBG << "Master is collecting the best partition";
       std::vector<PartitionID> best_partition = partitioner.bestPartition();
       hypergraph.reset();
 

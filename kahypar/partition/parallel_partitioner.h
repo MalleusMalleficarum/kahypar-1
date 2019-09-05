@@ -64,7 +64,7 @@ class ParallelPartitioner {
     
     context.partition_evolutionary = true;
     
-    LOG <<" MPIRank " << context.mpi.rank << ":" << "seed: " << context.partition.seed;
+    LOG <<"MPIRank " << context.mpi.rank << ":" << "seed: " << context.partition.seed;
     
     
     Exchanger exchanger(context.mpi.communicator, hg.initialNumNodes());
@@ -101,12 +101,19 @@ class ParallelPartitioner {
       for(unsigned i = 0; i < messages; ++i) {
 
         exchanger.sendBestIndividual(_population);
+        exchanger.clearBuffer();
         exchanger.receiveIndividual(context,hg, _population);
       }
       
     }
-    HighResClockTimepoint start = std::chrono::high_resolution_clock::now();      
+    HighResClockTimepoint start = std::chrono::high_resolution_clock::now();
+    MPI_Barrier(MPI_COMM_WORLD);      
+    exchanger.receiveIndividual(context,hg, _population);  
+     
+    
     MPI_Barrier(MPI_COMM_WORLD);
+     std::cout << "Who is here other than me" << std::endl; 
+    exchanger.clearBuffer();
     exchanger.collectBestPartition(_population, hg, context);    
     hg.reset();
     hg.setPartition(_population.individualAt(_population.best()).partition());

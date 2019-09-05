@@ -39,9 +39,12 @@ class PartitionBuffer {
       delete   _request_buffer[i];
     }
   }
-
+  int size() {
+    return _request_buffer.size();
+  }
   BufferElement acquireBuffer(const std::vector<PartitionID>& partition_vector) {
-    
+      int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
       int* partition_map = new int[partition_vector.size()];
 
       for(size_t i = 0; i < partition_vector.size(); ++i) {
@@ -67,13 +70,14 @@ class PartitionBuffer {
   void releaseBuffer() {
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    DBG <<"BufferSize "<< _request_buffer.size() << "Rank " << rank;
-    for(unsigned i = 0; i < _request_buffer.size(); ++i) {
+    std::cout << "I am the Buffer at Rank: " << rank << " and i have " << size() << " elements." << std::endl;
+    for(unsigned i = 0; i < _request_buffer.size();) {
       int finished = 0;
       MPI_Status status;
       MPI_Test(_request_buffer[i], &finished, &status);
       if(finished) {
-        DBG << "Finished " << i << "Rank " << rank;
+        //DBG << "Finished " << i << "Rank " << rank;
+        std::cout << "I am the Buffer at Rank: " << rank << " and request " << i << " sent tag: " << status.MPI_TAG << " is finished."<< std::endl;
         std::swap(_request_buffer[i], _request_buffer[_request_buffer.size()-1]);
         std::swap(_partition_buffer[i], _partition_buffer[_request_buffer.size()-1]);
 
@@ -82,6 +86,12 @@ class PartitionBuffer {
 
         _partition_buffer.pop_back();
         _request_buffer.pop_back();
+        std::cout << "I am the Buffer at Rank: " << rank << " and i have " << size() << " elements now."<< std::endl;
+      }
+      else {
+        
+        std::cout << "I am the Buffer at Rank: " << rank << " and request " << i << " sent tag: " << status.MPI_TAG<< " is NOT finished."<< std::endl;
+        ++i;
       }
     }
   }

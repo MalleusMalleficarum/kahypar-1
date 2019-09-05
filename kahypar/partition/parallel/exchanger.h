@@ -63,7 +63,9 @@ class Exchanger {
       MPI_Type_free(&_MPI_Partition);
       MPI_Barrier( _m_communicator );
     }          
-  
+  inline void clearBuffer() {
+    _partition_buffer.releaseBuffer();
+  }
   inline void sendBestIndividual(const Population& population) {
 
     if(population.individualAt(population.best()).fitness() < _current_best_fitness) {
@@ -112,6 +114,7 @@ class Exchanger {
       const std::vector<PartitionID>& partition_vector = population.individualAt(population.best()).partition();
 
       BufferElement ele = _partition_buffer.acquireBuffer(partition_vector);
+      DBG << "Rank " << _rank << " buffersize: " << _partition_buffer.size();
       MPI_Isend(ele.partition, 1, _MPI_Partition, new_target, new_target, _m_communicator, ele.request);
       _number_of_pushes++;
       _individual_already_sent_to[new_target] = true;
@@ -141,11 +144,12 @@ class Exchanger {
       return;
     }
     else {
-      LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << population << "recieve individual exchanger.h l.148";
+      LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << population << "receive individual exchanger.h l.148";
     }
     int recieved_fitness = population.individualAt(insertion_value).fitness();
     DBG << "Rank " << _rank << "recieved Individual from" << st.MPI_SOURCE << "with fitness" << recieved_fitness;
-     
+    
+    DBG << "Rank " << _rank << " buffersize: " << _partition_buffer.size(); 
     if(recieved_fitness < _current_best_fitness) {
       
       _current_best_fitness = recieved_fitness;
