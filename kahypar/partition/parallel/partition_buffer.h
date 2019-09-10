@@ -70,14 +70,13 @@ class PartitionBuffer {
   void releaseBuffer() {
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    std::cout << "I am the Buffer at Rank: " << rank << " and i have " << size() << " elements." << std::endl;
+    LOG << preface() << "Partition Buffer has " << size() << " elements left.";
     for(unsigned i = 0; i < _request_buffer.size();) {
       int finished = 0;
       MPI_Status status;
       MPI_Test(_request_buffer[i], &finished, &status);
       if(finished) {
-        //DBG << "Finished " << i << "Rank " << rank;
-        std::cout << "I am the Buffer at Rank: " << rank << " and request " << i << " sent tag: " << status.MPI_TAG << " is finished."<< std::endl;
+        LOG  <<preface() << "\x1B[32m" << "Partition Buffer request at position " << i << " is finished.\033[0m";
         std::swap(_request_buffer[i], _request_buffer[_request_buffer.size()-1]);
         std::swap(_partition_buffer[i], _partition_buffer[_request_buffer.size()-1]);
 
@@ -86,18 +85,22 @@ class PartitionBuffer {
 
         _partition_buffer.pop_back();
         _request_buffer.pop_back();
-        std::cout << "I am the Buffer at Rank: " << rank << " and i have " << size() << " elements now."<< std::endl;
+        LOG << preface() << "Partition Buffer has " << size() << " elements left.";
       }
       else {
         
-        std::cout << "I am the Buffer at Rank: " << rank << " and request " << i << " sent tag: " << status.MPI_TAG<< " is NOT finished."<< std::endl;
+        LOG  << preface() << "\x1B[31m" << "Partition Buffer request at position " << i << " is NOT finished.\033[0m";
         ++i;
       }
     }
   }
 
  private:
- 
+ inline std::string preface() {
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+   return "[MPI Rank " + std::to_string(rank) + "] ";
+ }
  std::vector<int*> _partition_buffer;
  std::vector<MPI_Request*> _request_buffer;
 };

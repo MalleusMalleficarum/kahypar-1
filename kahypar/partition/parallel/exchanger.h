@@ -2,6 +2,7 @@
 
 
 #include "kahypar/partition/parallel/partition_buffer.h"
+#include "kahypar/utils/randomize.h"
 namespace kahypar {
 
 
@@ -110,11 +111,11 @@ class Exchanger {
       
 
       
-      DBG << "Rank " << _rank << " sending to " << new_target << "..."<< "fitness " << population.individualAt(population.best()).fitness();
+      DBG << preface() << " sending to " << new_target << "..."<< "fitness " << population.individualAt(population.best()).fitness();
       const std::vector<PartitionID>& partition_vector = population.individualAt(population.best()).partition();
 
       BufferElement ele = _partition_buffer.acquireBuffer(partition_vector);
-      DBG << "Rank " << _rank << " buffersize: " << _partition_buffer.size();
+      DBG << preface() << " buffersize: " << _partition_buffer.size();
       MPI_Isend(ele.partition, 1, _MPI_Partition, new_target, new_target, _m_communicator, ele.request);
       _number_of_pushes++;
       _individual_already_sent_to[new_target] = true;
@@ -140,16 +141,18 @@ class Exchanger {
     hg.setPartition(result_individual_partition);
     size_t insertion_value = population.insert(Individual(hg, context), context);
     if(insertion_value == std::numeric_limits<unsigned>::max()) {
-      DBG << "INSERTION DISCARDED";
-      return;
+      DBG << preface() << "INSERTION DISCARDED";
+      break;
     }
     else {
-      LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << population << "receive individual exchanger.h l.148";
+      LOG << preface() << "Population " << population << "receive individual";
     }
-    int recieved_fitness = population.individualAt(insertion_value).fitness();
-    DBG << "Rank " << _rank << "recieved Individual from" << st.MPI_SOURCE << "with fitness" << recieved_fitness;
     
-    DBG << "Rank " << _rank << " buffersize: " << _partition_buffer.size(); 
+    int recieved_fitness = population.individualAt(insertion_value).fitness();
+    
+    LOG << preface() << "Population " << "recieved Individual from" << st.MPI_SOURCE << "with fitness" << recieved_fitness;
+    
+    LOG << preface() << " buffersize: " << _partition_buffer.size(); 
     if(recieved_fitness < _current_best_fitness) {
       
       _current_best_fitness = recieved_fitness;
@@ -173,7 +176,7 @@ class Exchanger {
     }
     for(int i = 0; i < number_of_exchanges_required; ++i) {
       exchangeIndividuals(population, context, hg);
-      DBG << "Population " << population << "Rank " << _rank;
+      DBG << preface() << "Population " << population <<" exchange individuals";
     }
     
   }
@@ -183,18 +186,47 @@ class Exchanger {
     int amount_of_mpi_processes;
     MPI_Comm_size( _m_communicator, &amount_of_mpi_processes);
     std::vector<int> permutation_of_mpi_process_numbers(amount_of_mpi_processes);
-    DBG << "Rank " << _rank << "length " << permutation_of_mpi_process_numbers.size();
+    /*Master Thread generates a degenerate permutation. all processes have to use the same permutation
+      in order for the exchange protocol to work*/
+    if(_rank == 0) {
+      
+      std::iota (std::begin(permutation_of_mpi_process_numbers), std::end(permutation_of_mpi_process_numbers), 0);
+      for(unsigned i = 1; i < amount_of_mpi_processes; ++i) {
+         int random_int_smaller_than_i = Randomize::instance().getRandomInt(0, i - 1);
+         std::swap(permutation_of_mpi_process_numbers[i], permutation_of_mpi_process_numbers[random_int_smaller_than_i]);
+         
+      }
+    }
+
+      MPI_Bcast(permutation_of_mpi_process_numbers.data(), amount_of_mpi_processes, MPI_INT, 0, _m_communicator);
+      for(unsigned i = 0; i < amount_of_mpi_processes; ++i) {
+         DBG << preface() << "Are we random " << permutation_of_mpi_process_numbers[i] << " at " <<i;
+
+      }
+    
+    
+    //DBG << preface() << "length " << permutation_of_mpi_process_numbers.size();
 
     
 
     /*This randomization is independent from the algorithm and has to use its own seed to
       ensure that all Mpi threads generate the same permutation */  
       
+    /*Additional note, it is attempted to create a derangement, as there is no pracitcal sense
+      to send to oneself.*/
+      
         
-    std::iota (std::begin(permutation_of_mpi_process_numbers), std::end(permutation_of_mpi_process_numbers), 0);
-    std::shuffle(permutation_of_mpi_process_numbers.begin(),
-                 permutation_of_mpi_process_numbers.begin() + permutation_of_mpi_process_numbers.size() , _generator);
+
+    /*std::shuffle(permutation_of_mpi_process_numbers.begin(),
+                 permutation_of_mpi_process_numbers.begin() + permutation_of_mpi_process_numbers.size() , _generator);*/
     
+    
+    
+    std::string s;
+    for(unsigned i = 0; i < permutation_of_mpi_process_numbers.size(); ++i) {
+      s = s.append(std::to_string(permutation_of_mpi_process_numbers[i]) + " "); 
+    }
+    DBG << preface() << "Permutation " << s;
     int sending_to = permutation_of_mpi_process_numbers[_rank];
     int recieving_from = 0;
     for(unsigned i = 0; i < permutation_of_mpi_process_numbers.size(); ++i) {
@@ -210,7 +242,7 @@ class Exchanger {
       outgoing_partition_map[i] = outgoing_partition[i];
     }
     int* recieved_partition_pointer = new int[outgoing_partition.size()];
-    DBG << "Rank " << _rank << "sending to " << sending_to << "quick_start";
+    DBG << preface() << "sending to " << sending_to << "quick_start";
     MPI_Status st;
     MPI_Sendrecv( outgoing_partition.data(), 1, _MPI_Partition, sending_to, 0, 
                   recieved_partition_pointer, 1, _MPI_Partition, recieving_from, 0, _m_communicator, &st); 
@@ -222,7 +254,7 @@ class Exchanger {
     hg.reset();
     hg.setPartition(recieved_partition_vector);
     population.insert(Individual(hg, context), context);
-    LOG <<" MPIRank " << context.mpi.rank << ":"  << "Population " << population << "exchange individuals exchanger.h l.225";
+    LOG << preface() << ":"  << "Population " << population << "exchange individuals l.227";
     delete[] outgoing_partition_map;
     delete[] recieved_partition_pointer;
   }
@@ -236,7 +268,7 @@ class Exchanger {
   
   
   inline void collectBestPartition(Population& population, Hypergraph& hg, const Context& context) {
-    DBG << "Collect Best Partition" << " Rank " << _rank;
+    DBG << preface() << "Collect Best Partition";
     std::vector<PartitionID> best_local_partition(population.individualAt(population.best()).partition());
     int best_local_objective = population.individualAt(population.best()).fitness();
     int best_global_objective = 0;
@@ -245,13 +277,13 @@ class Exchanger {
     
     int broadcast_rank = std::numeric_limits<int>::max();
     int global_broadcaster = 0;
-    DBG <<"Rank " << _rank << " " << best_local_objective << " " << best_global_objective;
+    DBG << preface() << "Best Local Partition: " << best_local_objective << " Best Global Partition: " << best_global_objective;
     if(best_local_objective == best_global_objective) {
       broadcast_rank = _rank;
     }
     
     MPI_Allreduce(&broadcast_rank, &global_broadcaster, 1, MPI_INT, MPI_MIN, _m_communicator);
-    DBG << "Rank " << _rank << " " << broadcast_rank;
+    DBG << preface() << "Determine Broadcaster (MAXINT if NOT) " << broadcast_rank;
     MPI_Bcast(best_local_partition.data(), hg.initialNumNodes(), MPI_INT, global_broadcaster, _m_communicator);
      
     hg.setPartition(best_local_partition);
@@ -261,7 +293,7 @@ class Exchanger {
 
   
  private: 
- 
+  
   
   HyperedgeWeight _current_best_fitness;
   std::mt19937 _generator;
@@ -274,6 +306,10 @@ class Exchanger {
   MPI_Comm _m_communicator;
   
   static constexpr bool debug = true;
+  
+  inline std::string preface() {
+       return "[MPI Rank " + std::to_string(_rank) + "] ";
+  }
 };
 
 
