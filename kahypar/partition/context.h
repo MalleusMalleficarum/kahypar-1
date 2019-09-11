@@ -405,6 +405,7 @@ struct MPIParameters {
   MPI_Comm communicator;
   int rank;
   int size;
+  MPIPopulationSize population_size = MPIPopulationSize::as_usual;
 };
 
 inline std::ostream& operator<< (std::ostream& str, const MPIParameters& params) {

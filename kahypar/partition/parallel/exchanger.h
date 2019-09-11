@@ -12,7 +12,6 @@ class Exchanger {
  public: 
   Exchanger(MPI_Comm communicator, size_t hypergraph_size) : 
     _current_best_fitness(std::numeric_limits<int>::max()),
-    _generator(),
     _maximum_allowed_pushes(),
     _number_of_pushes(),
     _rank(),
@@ -31,7 +30,6 @@ class Exchanger {
         _maximum_allowed_pushes = 1;
       }
 
-      _generator.seed(1);
       _individual_already_sent_to = std::vector<bool>(comm_size);
       
       MPI_Type_contiguous(hypergraph_size, MPI_INT, &_MPI_Partition);
@@ -186,10 +184,11 @@ class Exchanger {
     int amount_of_mpi_processes;
     MPI_Comm_size( _m_communicator, &amount_of_mpi_processes);
     std::vector<int> permutation_of_mpi_process_numbers(amount_of_mpi_processes);
+    
+    
     /*Master Thread generates a degenerate permutation. all processes have to use the same permutation
       in order for the exchange protocol to work*/
     if(_rank == 0) {
-      
       std::iota (std::begin(permutation_of_mpi_process_numbers), std::end(permutation_of_mpi_process_numbers), 0);
       for(unsigned i = 1; i < amount_of_mpi_processes; ++i) {
          int random_int_smaller_than_i = Randomize::instance().getRandomInt(0, i - 1);
@@ -198,35 +197,8 @@ class Exchanger {
       }
     }
 
-      MPI_Bcast(permutation_of_mpi_process_numbers.data(), amount_of_mpi_processes, MPI_INT, 0, _m_communicator);
-      for(unsigned i = 0; i < amount_of_mpi_processes; ++i) {
-         DBG << preface() << "Are we random " << permutation_of_mpi_process_numbers[i] << " at " <<i;
+    MPI_Bcast(permutation_of_mpi_process_numbers.data(), amount_of_mpi_processes, MPI_INT, 0, _m_communicator);
 
-      }
-    
-    
-    //DBG << preface() << "length " << permutation_of_mpi_process_numbers.size();
-
-    
-
-    /*This randomization is independent from the algorithm and has to use its own seed to
-      ensure that all Mpi threads generate the same permutation */  
-      
-    /*Additional note, it is attempted to create a derangement, as there is no pracitcal sense
-      to send to oneself.*/
-      
-        
-
-    /*std::shuffle(permutation_of_mpi_process_numbers.begin(),
-                 permutation_of_mpi_process_numbers.begin() + permutation_of_mpi_process_numbers.size() , _generator);*/
-    
-    
-    
-    std::string s;
-    for(unsigned i = 0; i < permutation_of_mpi_process_numbers.size(); ++i) {
-      s = s.append(std::to_string(permutation_of_mpi_process_numbers[i]) + " "); 
-    }
-    DBG << preface() << "Permutation " << s;
     int sending_to = permutation_of_mpi_process_numbers[_rank];
     int recieving_from = 0;
     for(unsigned i = 0; i < permutation_of_mpi_process_numbers.size(); ++i) {
@@ -296,7 +268,6 @@ class Exchanger {
   
   
   HyperedgeWeight _current_best_fitness;
-  std::mt19937 _generator;
   int _maximum_allowed_pushes;
   int _number_of_pushes;
   int _rank;

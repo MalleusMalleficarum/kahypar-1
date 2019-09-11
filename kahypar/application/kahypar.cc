@@ -57,7 +57,6 @@ int main(int argc, char* argv[]) {
   MPI_Comm_rank( communicator, &rank);
   MPI_Comm_size( communicator, &size);
 
-
   Context context;
 
   kahypar::processCommandLineInput(context, argc, argv);

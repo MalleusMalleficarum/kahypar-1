@@ -43,7 +43,7 @@ namespace partition {
 
 class ParallelPartitioner {
  private:
-  static constexpr bool debug = false;
+  static constexpr bool debug = true;
 
  public:
   explicit ParallelPartitioner(const Context& context) :
@@ -132,8 +132,48 @@ class ParallelPartitioner {
   FRIEND_TEST(TheEvoPartitioner, RespectsLimitsOfTheInitialPopulation);
   FRIEND_TEST(TheEvoPartitioner, IsCorrectlyDecidingTheActions);
   
+  inline unsigned determinePopulationSize(unsigned measured_time_for_one_partition, const Context& context) {
+    int estimated_population_size;
+    switch(context.mpi.population_size) {
+      DBG << preface() << "the chosen strategy " <<context.mpi.population_size;
+      case MPIPopulationSize::equal_sequential_time: {
+        DBG << preface() << "equal_seq";
+        estimated_population_size = std::round(context.evolutionary.dynamic_population_amount_of_time
+                                               * context.partition.time_limit
+                                               * context.mpi.size 
+                                               / measured_time_for_one_partition); 
+        break;
+      }
+      case MPIPopulationSize::equal_to_the_number_of_mpi_processes: {
+       DBG << preface() << "equal_tothe";
+        estimated_population_size = context.mpi.size;
+        break;
+      }
+      case MPIPopulationSize::as_usual: {
+       DBG << preface() << "as usual";
+        estimated_population_size = std::round(context.evolutionary.dynamic_population_amount_of_time
+                                               * context.partition.time_limit
+                                               / measured_time_for_one_partition);
+        break;
+      }
+    }
+    DBG << preface() <<"HERE "<<applyPopulationSizeBounds(estimated_population_size);
+    DBG << preface() << "THERE";
+    return applyPopulationSizeBounds(estimated_population_size);
+
+    
+  }
+  inline unsigned applyPopulationSizeBounds(int unbound_population_size) {
+  
+    int minimal_size = std::max(unbound_population_size, 3);
+    return std::min(minimal_size, 50);
+  }
+  
+  
   inline void generateInitialPopulation(Hypergraph& hg, Context& context) {
     if (context.evolutionary.dynamic_population_size) {
+    
+    
       HighResClockTimepoint start = std::chrono::high_resolution_clock::now();
       _population.generateIndividual(hg, context);
       LOG << preface()  << "Population " << _population <<" generateInitialPopulation";
@@ -143,16 +183,16 @@ class ParallelPartitioner {
 
       ++context.evolutionary.iteration;
       io::serializer::serializeEvolutionary(context, hg);
-     
-      int dynamic_population_size = std::round(context.evolutionary.dynamic_population_amount_of_time
-                                               * context.partition.time_limit 
-                                               / Timer::instance().evolutionaryResult().total_evolutionary);
-      int minimal_size = std::max(dynamic_population_size, 3);
-
-      context.evolutionary.population_size = std::min(minimal_size, 50);
+      
+      context.evolutionary.population_size = determinePopulationSize(Timer::instance().evolutionaryResult().total_evolutionary, context);
       MPI_Bcast(&context.evolutionary.population_size, 1, MPI_INT, 0, context.mpi.communicator);
+      
+      
+      MPI_Barrier(MPI_COMM_WORLD);
 
     }
+    
+    
     context.evolutionary.edge_frequency_amount = sqrt(context.evolutionary.population_size);
     
     
