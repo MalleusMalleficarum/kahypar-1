@@ -197,6 +197,7 @@ class ParallelPartitioner {
     
     
     size_t desired_repetitions_for_initial_partitioning;
+    DBG << preface() << " Quickstart? "<< context.evolutionary.parallel_partitioning_quick_start;
     if(context.evolutionary.parallel_partitioning_quick_start) {
           //TODO test line remove if in doubt
       //context.evolutionary.population_size = context.mpi.size;

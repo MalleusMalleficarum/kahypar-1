@@ -294,6 +294,8 @@ static inline void serializeEvolutionary(const Context& context, const Hypergrap
       << " absorption=" << metrics::absorption(hg)
       << " imbalance=" << metrics::imbalance(hg, context)
       << " k=" << context.partition.k
+      << " fast-ip=" << context.evolutionary.parallel_partitioning_quick_start
+      << " dyn-pop-strat=" << context.mpi.population_size
       << std::endl;
 
   std::cout << oss.str() << std::endl;
